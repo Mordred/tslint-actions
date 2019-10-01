@@ -1,8 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const core = require("@actions/core"); // tslint:disable-line
-// Currently @actions/github cannot be loaded via import statement due to typing error
-const github = require("@actions/github"); // tslint:disable-line
+const github_1 = require("@actions/github");
 const common_tags_1 = require("common-tags");
 const fs = require("fs");
 const glob = require("glob");
@@ -14,7 +13,6 @@ const SeverityAnnotationLevelMap = new Map([
     ["error", "failure"],
 ]);
 (async () => {
-    const ctx = github.context;
     const configFileName = core.getInput("config") || "tslint.json";
     const projectFileName = core.getInput("project");
     const pattern = core.getInput("pattern");
@@ -28,13 +26,13 @@ const SeverityAnnotationLevelMap = new Map([
         core.setFailed("tslint-actions: Please set token");
         return;
     }
-    const octokit = new github.GitHub(ghToken);
+    const octokit = new github_1.GitHub(ghToken);
     // Create check
     const check = await octokit.checks.create({
-        owner: ctx.repo.owner,
-        repo: ctx.repo.repo,
+        owner: github_1.context.repo.owner,
+        repo: github_1.context.repo.repo,
         name: CHECK_NAME,
-        head_sha: ctx.payload.pull_request ? ctx.payload.pull_request.head.sha : ctx.sha,
+        head_sha: github_1.context.payload.pull_request ? github_1.context.payload.pull_request.head.sha : github_1.context.sha,
         status: "in_progress",
     });
     const options = {
@@ -62,11 +60,11 @@ const SeverityAnnotationLevelMap = new Map([
             const linter = new tslint_1.Linter(options);
             let files = glob.sync(pattern);
             if (onlyChanged) {
-                const pullRequest = ctx.payload.pull_request;
+                const pullRequest = github_1.context.payload.pull_request;
                 if (pullRequest) {
                     const response = await octokit.pulls.listFiles({
-                        owner: ctx.repo.owner,
-                        repo: ctx.repo.repo,
+                        owner: github_1.context.repo.owner,
+                        repo: github_1.context.repo.repo,
                         pull_number: pullRequest.number,
                     });
                     const changedFiles = response.data.map((f) => f.filename);
@@ -74,9 +72,9 @@ const SeverityAnnotationLevelMap = new Map([
                 }
                 else {
                     const response = await octokit.repos.getCommit({
-                        owner: ctx.repo.owner,
-                        repo: ctx.repo.repo,
-                        ref: ctx.sha,
+                        owner: github_1.context.repo.owner,
+                        repo: github_1.context.repo.repo,
+                        ref: github_1.context.sha,
                     });
                     const changedFiles = response.data.files.map((f) => f.filename);
                     files = files.filter((f) => changedFiles.includes(f));
@@ -90,19 +88,10 @@ const SeverityAnnotationLevelMap = new Map([
             return linter.getResult();
         }
     })();
-    const annotations = result.failures.map((failure) => ({
-        path: failure.getFileName(),
-        start_line: failure.getStartPosition().getLineAndCharacter().line,
-        end_line: failure.getEndPosition().getLineAndCharacter().line,
-        start_column: failure.getStartPosition().getLineAndCharacter().character,
-        end_column: failure.getStartPosition().getLineAndCharacter().character,
-        annotation_level: SeverityAnnotationLevelMap.get(failure.getRuleSeverity()) || "notice",
-        message: `[${failure.getRuleName()}] ${failure.getFailure()}`,
-    }));
     // Update check
     await octokit.checks.update({
-        owner: ctx.repo.owner,
-        repo: ctx.repo.repo,
+        owner: github_1.context.repo.owner,
+        repo: github_1.context.repo.repo,
         check_run_id: check.data.id,
         name: CHECK_NAME,
         status: "completed",
@@ -128,7 +117,15 @@ const SeverityAnnotationLevelMap = new Map([
         \`\`\`
         </details>
       `.replace("__CONFIG_CONTENT__", JSON.stringify(tslint_1.Configuration.readConfigurationFile(configFileName), null, 2)),
-            annotations,
+            annotations: result.failures.map((failure) => ({
+                path: failure.getFileName(),
+                start_line: failure.getStartPosition().getLineAndCharacter().line,
+                end_line: failure.getEndPosition().getLineAndCharacter().line,
+                start_column: failure.getStartPosition().getLineAndCharacter().character,
+                end_column: failure.getStartPosition().getLineAndCharacter().character,
+                annotation_level: SeverityAnnotationLevelMap.get(failure.getRuleSeverity()) || "notice",
+                message: `[${failure.getRuleName()}] ${failure.getFailure()}`,
+            })),
         },
     });
     if (result.errorCount) {

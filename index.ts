@@ -1,8 +1,5 @@
 import * as core from "@actions/core"; // tslint:disable-line
-// Currently @actions/github cannot be loaded via import statement due to typing error
-const github = require("@actions/github"); // tslint:disable-line
-import { Context } from "@actions/github/lib/context";
-import * as Octokit from "@octokit/rest";
+import { GitHub, context as ctx } from '@actions/github';
 import { stripIndent as markdown } from "common-tags";
 import * as fs from "fs";
 import * as glob from "glob";
@@ -17,8 +14,6 @@ const SeverityAnnotationLevelMap = new Map<RuleSeverity, "warning" | "failure">(
 ]);
 
 (async () => {
-  const ctx = github.context as Context;
-
   const configFileName = core.getInput("config") || "tslint.json";
   const projectFileName = core.getInput("project");
   const pattern = core.getInput("pattern");
@@ -35,7 +30,7 @@ const SeverityAnnotationLevelMap = new Map<RuleSeverity, "warning" | "failure">(
     return;
   }
 
-  const octokit = new github.GitHub(ghToken) as Octokit;
+  const octokit = new GitHub(ghToken);
 
   // Create check
   const check = await octokit.checks.create({
@@ -103,16 +98,6 @@ const SeverityAnnotationLevelMap = new Map<RuleSeverity, "warning" | "failure">(
     }
   })();
 
-  const annotations: Octokit.ChecksCreateParamsOutputAnnotations[] = result.failures.map((failure) => ({
-    path: failure.getFileName(),
-    start_line: failure.getStartPosition().getLineAndCharacter().line,
-    end_line: failure.getEndPosition().getLineAndCharacter().line,
-    start_column: failure.getStartPosition().getLineAndCharacter().character,
-    end_column: failure.getStartPosition().getLineAndCharacter().character,
-    annotation_level: SeverityAnnotationLevelMap.get(failure.getRuleSeverity()) || "notice",
-    message: `[${failure.getRuleName()}] ${failure.getFailure()}`,
-  }));
-
   // Update check
   await octokit.checks.update({
     owner: ctx.repo.owner,
@@ -142,7 +127,15 @@ const SeverityAnnotationLevelMap = new Map<RuleSeverity, "warning" | "failure">(
         \`\`\`
         </details>
       `.replace("__CONFIG_CONTENT__", JSON.stringify(Configuration.readConfigurationFile(configFileName), null, 2)),
-      annotations,
+      annotations: result.failures.map((failure) => ({
+        path: failure.getFileName(),
+        start_line: failure.getStartPosition().getLineAndCharacter().line,
+        end_line: failure.getEndPosition().getLineAndCharacter().line,
+        start_column: failure.getStartPosition().getLineAndCharacter().character,
+        end_column: failure.getStartPosition().getLineAndCharacter().character,
+        annotation_level: SeverityAnnotationLevelMap.get(failure.getRuleSeverity()) || "notice",
+        message: `[${failure.getRuleName()}] ${failure.getFailure()}`,
+      })),
     },
   });
 
